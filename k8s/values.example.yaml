@@ -1,0 +1,71 @@
+# Default values for scarcoin chart.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+images:
+  oracle: ghcr.io/zoagrad/scarcoin-ml-oracle:latest
+  agentnet: ghcr.io/zoagrad/scarcoin-agentnet:latest
+  indexer: ghcr.io/zoagrad/scarcoin-indexer:latest
+  walletui: ghcr.io/zoagrad/scarwallet-ui:latest
+  # Third-party images
+  anvil: ghcr.io/foundry-rs/foundry:latest
+  nats: nats:2.10
+  postgres: postgres:16
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Common environment variables for the stack
+env:
+  # Chain / RPC
+  CHAIN_ID: 80001
+  RPC_URL: "http://anvil:8545"
+
+  # Event bus
+  NATS_URL: "nats://nats:4222"
+
+  # Indexer DB - constructed from secrets in a real setup
+  DATABASE_URL: "postgres://scar:scarpass@postgres:5432/scarcoin"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

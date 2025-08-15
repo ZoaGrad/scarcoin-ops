@@ -1,0 +1,126 @@
+version: "3.9"
+name: scarcoin-stack
+
+x-logging: &logging
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: anvil -p 8545 -m "test test test test test test test test test test test junk"
+    ports: ["8545:8545"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8545"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    logging: *logging
+
+  nats:
+    image: nats:2.10
+    command: ["-js"]   # enable JetStream
+    ports: ["4222:4222"]
+    healthcheck:
+      test: ["CMD", "nats", "server", "check", "localhost:4222"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    logging: *logging
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scarcoin}
+      POSTGRES_USER: ${POSTGRES_USER:-scar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scarpass}
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scar} -d ${POSTGRES_DB:-scarcoin}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    logging: *logging
+
+  # Deploy contracts and export ABIs/addresses
+  contracts-deploy:
+    image: ghcr.io/foundry-rs/foundry:latest
+    depends_on:
+      anvil:
+        condition: service_healthy
+    env_file: [.env]
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./out:/out
+    entrypoint: ["/bin/sh", "/scripts/deploy-contracts.sh"]
+    logging: *logging
+
+  # ScarCoin ML Oracle (uses your repo image/tag)
+  ml-oracle:
+    image: ghcr.io/zoagrad/scarcoin-ml-oracle:latest
+    env_file: [.env]
+    environment:
+      PORT: 8000
+    depends_on:
+      - contracts-deploy
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+    logging: *logging
+
+  # Agent network (listens to chain + bus)
+  agentnet:
+    image: ghcr.io/zoagrad/scarcoin-agentnet:latest
+    env_file: [.env]
+    environment:
+      NATS_URL: ${NATS_URL}
+      RPC_URL: ${RPC_URL}
+    depends_on:
+      nats:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      contracts-deploy:
+        condition: service_completed_successfully
+    logging: *logging
+
+  # Minimal indexer (can be part of agentnet; shown separately)
+  indexer:
+    image: ghcr.io/zoagrad/scarcoin-indexer:latest
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-scar}:${POSTGRES_PASSWORD:-scarpass}@postgres:5432/${POSTGRES_DB:-scarcoin}
+      RPC_URL: ${RPC_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      contracts-deploy:
+        condition: service_completed_successfully
+    ports: ["8080:8080"] # GraphQL/HTTP
+    logging: *logging
+
+  # Wallet UI (dev mode)
+  wallet-ui:
+    image: ghcr.io/zoagrad/scarwallet-ui:latest
+    env_file: [.env]
+    environment:
+      VITE_CHAIN_ID: ${CHAIN_ID}
+      VITE_RPC_URL: http://localhost:8545
+      VITE_ORACLE_URL: http://localhost:8000
+      VITE_INDEXER_URL: http://localhost:8080
+    depends_on:
+      ml-oracle:
+        condition: service_healthy
+      indexer:
+        condition: service_started
+    ports: ["5173:5173"]
+    logging: *logging
+
+volumes:
+  pgdata:

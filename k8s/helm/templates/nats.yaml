@@ -1,0 +1,2 @@
+# Placeholder for NATS deployment.
+# Should be a StatefulSet using JetStream.

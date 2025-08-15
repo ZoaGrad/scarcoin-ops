@@ -1,0 +1,2 @@
+# Placeholder for PostgreSQL deployment.
+# Should be a StatefulSet with persistent volume claims.
