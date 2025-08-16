@@ -1,0 +1,16 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure scripts are executable
+        run: test -x scripts/health_check.sh
+      - name: Lint scripts
+        run: |
+          if command -v shellcheck >/dev/null; then
+            shellcheck scripts/*.sh
+          else
+            bash -n scripts/*.sh
+          fi
